@@ -1,37 +1,15 @@
-from  pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr
 
 class PostSchema(BaseModel):
-    id: int = Field(default=None)
-    title: str = Field(default=None)
-    content: str = Field(default=None)
-    class Config:
-        schema_extra = {
-            "post_demo": {
-                "title": "some title about animals",
-                "content": "some content about animals"
-            }
-        }
+    id: int | None = None
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1)
 
 class UserSchema(BaseModel):
-    fullname: str = Field(default=None)
-    email: EmailStr = Field(default=None)
-    password: str = Field(default=None)
-    class Config:
-        schema_extra = {
-            "user_demo": {
-                "fullname": "John Doe",
-                "email": "john@doe.com",
-                "password": "12345678"
-            }
-        }
+    fullname: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8)
 
 class UserLoginSchema(BaseModel):
-    email: EmailStr = Field(default=None)
-    password: str = Field(default=None)
-    class Config:
-        schema_extra = {
-            "user_demo": {
-                "email": "john@doe.com",
-                "password": "12345678"
-            }
-        }
+    email: EmailStr
+    password: str = Field(min_length=1)

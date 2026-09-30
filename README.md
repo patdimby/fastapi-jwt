@@ -1,92 +1,119 @@
-# FastAPI-Authentication-with-JWT
-This tutorial will teach you how to create authentication in a FastAPI application using JSON Web Tokens.
+# FastAPI JWT Mini Blog
 
-### Steps and File description
+A compact Python API demonstrating account registration, password hashing, signed JWT authentication, and protected post creation. It is designed to be easy to read, run, and test.
 
-I will be building a secured mini-blog CRUD app for creating and reading blog posts.
+**FastAPI · Pydantic 2 · PyJWT · PBKDF2 · Pytest · GitHub Actions**
 
-Before we proceed, let's define a pydantic model for the posts.
+## Features
 
-#### Model File
+- Public post listing and lookup, with three example posts.
+- Account signup and login using email/password.
+- Salted PBKDF2 password hashes; plaintext passwords are never stored.
+- One-hour HS256 JWTs, with signature and required-claim validation.
+- Authenticated post creation and a user directory that excludes credentials.
+- Request validation, meaningful HTTP errors, isolated HTTP tests and CI.
 
-In model.py:
+Users and posts live in process memory. They reset on restart and are not shared across worker processes. There is no database, frontend, post update/delete, ownership model, refresh token, or email-verification workflow.
 
-* Define the Schemas for Post creation, User login, sign up etc
-* Config of schema also added for each schema function
+## Quick start
 
-#### JWT Authentication
+Use Python 3.12 for the verified workflow.
 
-In this section, we'll create a JWT token handler and a class to handle bearer tokens.
-
-Before beginning, install PyJWT, for encoding and decoding JWTs. We'll also be using and python-decouple for reading environment variables.
-
-#### JWT Handler
-
-The JWT handler will be responsible for signing, encoding, decoding, and returning JWT tokens. In the code, we imported the time, typing, jwt, and decouple modules. The time module is responsible for setting an expiry for the tokens. Every JWT has an expiry date and/or time where it becomes invalid. The jwt module is responsible for encoding and decoding generated token strings. Lastly, the token_response function is a helper function for returning generated tokens.
-
-#### JWT Secret and Algorithm
-
-Next, create an environment file called .env in the base directory:
+```bash
+python -m venv .venv
+# Linux / macOS
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+cp .env.example .env
+# Windows PowerShell: Copy-Item .env.example .env
+python secret_generator.py
 ```
-secret=please_please_update_me_please
-algorithm=HS256
+
+Copy the generated random secret into the `secret` value of `.env`, then run:
+
+```bash
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
-The secret key is used for encoding and decoding JWT strings.
 
-The algorithm value on the other hand is the type of algorithm used in the encoding process.
+Open **http://127.0.0.1:8000/docs** for interactive OpenAPI documentation. Start commands from the project root so the optional `.env` file resolves consistently.
 
-In the **signJWT** function, we defined the payload, a dictionary containing the user_id passed into the function, and an expiry time of ten minutes from when it is generated. Next, we created a token string comprising of the payload, the secret, and the algorithm type and then returned it.
+## Configuration
 
-The **decodeJWT** function takes the token and decodes it with the aid of the jwt module and then stores it in a decoded_token variable. Next, we returned decoded_token if the expiry time is valid, otherwise, we returned None.
+| Setting | Requirement | Purpose |
+| --- | --- | --- |
+| `secret` | Required; at least 32 UTF-8 bytes | HS256 signing key |
+| `algorithm` | `HS256` | Explicit signing/verification algorithm |
 
-#### User Registration and Login
+`python-decouple` reads configuration from environment variables or `.env`. Environment variables take precedence. Invalid signing configuration fails at import/startup. Never commit `.env`.
 
-Moving along, let's wire up the routes, schemas, and helpers for handling user registration and login.
+## API
 
-#### Securing Routes
+| Method | Route | Behavior | Access |
+| --- | --- | --- | --- |
+| GET | `/` | Welcome message | Public |
+| GET | `/posts` | All shared posts | Public |
+| GET | `/posts/{id}` | One post; missing ID returns `404` | Public |
+| POST | `/posts` | Create a post | Bearer JWT |
+| POST | `/users/signup` | Create account and return token | Public |
+| POST | `/users/login` | Return token for valid credentials | Public |
+| GET | `/users` | Names/emails only | Bearer JWT |
 
-With the authentication in place, let's secure the create route.
+Signup body:
 
-#### JWT Bearer
+```json
+{"fullname":"Ada Lovelace","email":"ada@example.com","password":"example-password"}
+```
 
-Now we need to verify the protected route, by checking whether the request is authorized or not. This is done by scanning the request for the JWT in the Authorization header. FastAPI provides the basic validation via the HTTPBearer class. We can use this class to extract and parse the token. Then, we'll verify it using the decodeJWT function defined in app/auth/auth_handler.py.
+Login body:
 
-Create a new file in the "auth" folder called auth_bearer.py
+```json
+{"email":"ada@example.com","password":"example-password"}
+```
 
-So, the JWTBearer class is a subclass of FastAPI's HTTPBearer class that will be used to persist authentication on our routes.
+For compatibility, the response retains the original key **`access token`**, including its space:
 
-Init
+```json
+{"access token":"YOUR_JWT"}
+```
 
-In the __init__ method, we enabled automatic error reporting by setting the boolean auto_error to True.
+Use it as `Authorization: Bearer YOUR_JWT`. Post creation accepts:
 
-Call
+```json
+{"title":"A useful article","content":"Article text"}
+```
 
-In the __call__ method, we defined a variable called credentials of type HTTPAuthorizationCredentials, which is created when the JWTBearer class is invoked. We then proceeded to check if the credentials passed in during the course of invoking the class are valid:
+The server assigns the post ID and returns a success message. Signup requires a nonempty name, valid email, and password of at least eight characters. Duplicate email returns `409`; invalid fields return `422`; bad login or missing/invalid bearer credentials return `401`.
 
-    If the credential scheme isn't a bearer scheme, we raised an exception for an invalid token scheme.
-    If a bearer token was passed, we verified that the JWT is valid.
-    If no credentials were received, we raised an invalid authorization error.
+All authenticated users share the same post collection and user directory. The JWT contains an email identity but the bearer guard does not check whether the account still exists. Tokens have no server-side revocation.
 
-Verify
+## Tests
 
-The verify_jwt method verifies whether a token is valid. The method takes a jwtoken string which it then passes to the decodeJWT function and returns a boolean value based on the outcome from decodeJWT.
+```bash
+pytest --cov=app --cov=main --cov-report=term-missing
+```
 
-#### Dependency Injection
+**Verified:** 19 tests passed; statement coverage is 99% (97 of 98 statements). Tests isolate the mutable stores, use a test-only signing secret, and exercise actual HTTP routes with FastAPI's test client.
 
-To secure the routes, we'll leverage dependency injection via FastAPI's Depends.
+See [TESTING.md](TESTING.md) for scope and limitations. GitHub Actions runs the suite on Python 3.12.
 
-Start by updating the imports by adding the JWTBearer class as well as Depends
+## Layout
 
-In the POST route, add the dependencies argument to the @app property
+```text
+main.py                 HTTP routes and temporary stores
+app/model.py            Pydantic request schemas
+app/auth/jwt_handler.py  Token creation and verification
+app/auth/jwt_bearer.py   Protected-route dependency
+app/auth/passwords.py    Salted password hashing
+secret_generator.py     Random local secret generation
+tests/                  HTTP and authentication tests
+.github/workflows/      CI
+```
 
-#### Conclusion
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for request flow and design limits. [GITHUB_DESCRIPTION.md](GITHUB_DESCRIPTION.md) contains a ready-to-use repository description.
 
-This tutorial covered the process of securing a FastAPI application with JSON Web Tokens. Thanks for reading.
+## Deployment and contribution
 
-Future challenges:
+This is a single-process demonstration. Add persistent storage, transaction-safe identifiers, rate limiting, account lifecycle controls and a deliberate authorization model before using it as a shared service. Use HTTPS outside local development. Test changes with the supplied suite and keep credentials out of commits.
 
-    * Hash the passwords before saving them using [bcrypt](https://github.com/pyca/bcrypt/) or [passlib](https://passlib.readthedocs.io/).
-    * Move the users and posts from temporary storage to a database like MongoDB or Postgres. You can follow the steps in [Building a CRUD App with FastAPI and MongoDB](https://testdriven.io/blog/fastapi-mongo/) to set up a MongoDB database and deploy to Heroku.
-    * Add refresh tokens to automatically issue new JWTs when they expire. Don't know where to start? Check out [this](https://stackoverflow.com/questions/46197050/flask-jwt-extend-validity-of-token-on-each-request/46284627#46284627) explanation by the author of Flask-JWT.
-    * Add routes for updating and deleting posts.
-
+No project license file was included in the original archive; choose a license before advertising reuse terms.

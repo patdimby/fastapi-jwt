@@ -1,4 +1,4 @@
 import secrets
 
-# Generate a 16 character random combination of letters and numbers
-secrets.token_hex(16)
+if __name__ == "__main__":
+    print(secrets.token_urlsafe(48))
